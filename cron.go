@@ -5,7 +5,6 @@ import (
 	"log"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -32,7 +31,7 @@ type Cron struct {
 	stop    chan struct{}
 	add     chan *CronJob
 	rm      chan *CronJob
-	running int32
+	running bool
 }
 
 func NewCron() *Cron {
@@ -48,32 +47,36 @@ func NewCron() *Cron {
 			}
 			return ci.next.Before(cj.next)
 		}, Kary(4), Locker(&sync.Mutex{})),
-		stop:    make(chan struct{}),
-		add:     make(chan *CronJob),
-		rm:      make(chan *CronJob),
-		running: 0,
+		stop: make(chan struct{}),
+		add:  make(chan *CronJob),
+		rm:   make(chan *CronJob),
 	}
 	return cron
 }
 
 func (c *Cron) Start() {
-	if atomic.LoadInt32(&c.running) > 0 {
+	if c.running {
 		return
 	}
-	atomic.StoreInt32(&c.running, 1)
+	c.running = true
 	go c.run()
 }
 
 func (c *Cron) Stop() {
+	if !c.running {
+		return
+	}
 	c.stop <- struct{}{}
 }
 
 func (c *Cron) Run() {
-	if atomic.LoadInt32(&c.running) > 0 {
+	if c.running {
 		return
 	}
+	c.running = true
 	c.run()
 }
+
 func (c *Cron) run() {
 	for {
 		var timer *time.Timer
@@ -105,6 +108,7 @@ func (c *Cron) run() {
 			job.next = job.Next(job.pre)
 			c.h.Push(job)
 		case job := <-c.rm:
+			timer.Stop()
 			c.h.WalkRm(func(v interface{}) (bool, bool) {
 				cj := v.(*CronJob)
 				if cj.Id == job.Id {
@@ -115,7 +119,6 @@ func (c *Cron) run() {
 			})
 		case <-c.stop:
 			timer.Stop()
-			atomic.StoreInt32(&c.running, 0)
 			return
 		}
 	}
