@@ -1,10 +1,8 @@
 package cron
 
 import (
-	"cron/utils"
 	"log"
 	"runtime"
-	"sync"
 	"time"
 )
 
@@ -36,9 +34,7 @@ type Cron struct {
 
 func NewCron() *Cron {
 	cron := &Cron{
-		h: NewKaryHeap(func(i, j interface{}) bool {
-			ci := i.(*CronJob)
-			cj := j.(*CronJob)
+		h: NewKaryHeap(4, func(ci, cj *CronJob) bool {
 			if ci.next.IsZero() {
 				return false
 			}
@@ -46,7 +42,7 @@ func NewCron() *Cron {
 				return true
 			}
 			return ci.next.Before(cj.next)
-		}, Kary(4), Locker(&sync.Mutex{})),
+		}),
 		stop: make(chan struct{}),
 		add:  make(chan *CronJob),
 		rm:   make(chan *CronJob),
@@ -83,17 +79,17 @@ func (c *Cron) run() {
 		if c.h.Len() == 0 {
 			timer = time.NewTimer(time.Hour * 1)
 		} else {
-			d := c.h.Peek(0).(*CronJob).next.Sub(time.Now())
+			d := c.h.Peek(0).next.Sub(time.Now())
 			timer = time.NewTimer(d)
 		}
 		select {
 		case now := <-timer.C:
 			for {
-				j := c.h.Peek(0)
-				if j == nil {
+				cj := c.h.Peek(0)
+				if cj == nil {
 					break
 				}
-				cj := j.(*CronJob)
+
 				if cj.next.Before(now) {
 					go c.RunJobWithRecover(cj)
 					cj.pre = cj.next
@@ -109,14 +105,14 @@ func (c *Cron) run() {
 			c.h.Push(job)
 		case job := <-c.rm:
 			timer.Stop()
-			c.h.WalkRm(func(v interface{}) (bool, bool) {
-				cj := v.(*CronJob)
+			idx := c.h.Walk(func(cj *CronJob) bool {
+
 				if cj.Id == job.Id {
-					return true, true
-				} else {
-					return false, false
+					return true
 				}
+				return false
 			})
+			c.h.Remove(idx)
 		case <-c.stop:
 			timer.Stop()
 			return
@@ -130,7 +126,7 @@ func (c *Cron) RunJobWithRecover(cj *CronJob) {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			log.Printf("panic when execute cron job,stack info:\n%s", utils.Bytes2String(buf))
+			log.Printf("panic when execute cron job,stack info:\n%s", bytes2String(buf))
 		}
 	}()
 	cj.Run()

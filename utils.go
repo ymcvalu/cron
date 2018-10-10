@@ -1,9 +1,9 @@
-package utils
+package cron
 
 import (
 	"unsafe"
 )
 
-func Bytes2String(byts []byte) string {
+func bytes2String(byts []byte) string {
 	return *(*string)(unsafe.Pointer(&byts))
 }
