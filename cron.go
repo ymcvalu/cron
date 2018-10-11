@@ -28,7 +28,7 @@ type Cron struct {
 	h       *KaryHeap
 	stop    chan struct{}
 	add     chan *CronJob
-	rm      chan *CronJob
+	rm      chan string
 	running bool
 }
 
@@ -45,7 +45,7 @@ func NewCron() *Cron {
 		}),
 		stop: make(chan struct{}),
 		add:  make(chan *CronJob),
-		rm:   make(chan *CronJob),
+		rm:   make(chan string),
 	}
 	return cron
 }
@@ -86,33 +86,31 @@ func (c *Cron) run() {
 		case now := <-timer.C:
 			for {
 				cj := c.h.Peek(0)
-				if cj == nil {
+				if cj == nil || !cj.next.Before(now) {
 					break
-				}
-
-				if cj.next.Before(now) {
-					go c.RunJobWithRecover(cj)
+				} else {
+					go c.runJobWithRecover(cj)
 					cj.pre = cj.next
 					cj.next = cj.Next(cj.pre)
 					c.h.RestoreDown(0)
-				} else {
-					break
 				}
 			}
+
 		case job := <-c.add:
 			timer.Stop()
 			job.next = job.Next(job.pre)
 			c.h.Push(job)
-		case job := <-c.rm:
+
+		case id := <-c.rm:
 			timer.Stop()
 			idx := c.h.Walk(func(cj *CronJob) bool {
-
-				if cj.Id == job.Id {
+				if cj.Id == id {
 					return true
 				}
 				return false
 			})
 			c.h.Remove(idx)
+
 		case <-c.stop:
 			timer.Stop()
 			return
@@ -120,7 +118,7 @@ func (c *Cron) run() {
 	}
 }
 
-func (c *Cron) RunJobWithRecover(cj *CronJob) {
+func (c *Cron) runJobWithRecover(cj *CronJob) {
 	defer func() {
 		if err := recover(); err != nil {
 			const size = 64 << 10
@@ -133,13 +131,9 @@ func (c *Cron) RunJobWithRecover(cj *CronJob) {
 }
 
 func (c *Cron) AddJob(job *CronJob) {
-	go func() {
-		c.add <- job
-	}()
+	c.add <- job
 }
 
-func (c *Cron) RemoveJob(job *CronJob) {
-	go func() {
-		c.rm <- job
-	}()
+func (c *Cron) RemoveJob(id string) {
+	c.rm <- id
 }
