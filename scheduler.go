@@ -14,21 +14,11 @@ func (f FuncScheduler) Next(pre time.Time) time.Time {
 	return f(pre)
 }
 
-type IntervalScheduler struct {
-	interval time.Duration
-}
-
-func FromInterval(secs int64) Scheduler {
-	return IntervalScheduler{time.Duration(secs * int64(time.Second))}
-}
-
-func (s IntervalScheduler) Next(pre time.Time) time.Time {
-	if pre.IsZero() {
-		pre = time.Now()
-	}
-	next := pre.Add(s.interval)
-	if next.Before(time.Now()) {
-		next = time.Now().Add(s.interval)
-	}
-	return next
+func Every(duration time.Duration) Scheduler {
+	return FuncScheduler(func(pre time.Time) time.Time {
+		if pre.IsZero() {
+			pre = time.Now()
+		}
+		return pre.Add(duration)
+	})
 }

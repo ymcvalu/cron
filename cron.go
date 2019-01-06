@@ -76,6 +76,7 @@ func (c *Cron) Run() {
 func (c *Cron) run() {
 	for _, job := range c.h.array {
 		job.pre = time.Now()
+		job.next = job.Scheduler.Next(job.pre)
 	}
 	c.h.BuildHeap()
 
