@@ -74,6 +74,11 @@ func (c *Cron) Run() {
 }
 
 func (c *Cron) run() {
+	for _, job := range c.h.array {
+		job.pre = time.Now()
+	}
+	c.h.BuildHeap()
+
 	for {
 		var timer *time.Timer
 		if c.h.Len() == 0 {
@@ -98,6 +103,16 @@ func (c *Cron) run() {
 
 		case job := <-c.add:
 			timer.Stop()
+			idx := c.h.Walk(func(cj *CronJob) bool {
+				if cj.Id == job.Id {
+					return true
+				}
+				return false
+			})
+			if idx >= 0 {
+				c.h.Remove(idx)
+			}
+			job.pre = time.Now()
 			job.next = job.Next(job.pre)
 			c.h.Push(job)
 
@@ -109,7 +124,9 @@ func (c *Cron) run() {
 				}
 				return false
 			})
-			c.h.Remove(idx)
+			if idx >= 0 {
+				c.h.Remove(idx)
+			}
 
 		case <-c.stop:
 			timer.Stop()
@@ -124,16 +141,36 @@ func (c *Cron) runJobWithRecover(cj *CronJob) {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			log.Printf("panic when execute cron job,stack info:\n%s", bytes2String(buf))
+			log.Printf("panic when executing cron job,stack info:\n%s", bytes2String(buf))
 		}
 	}()
 	cj.Run()
 }
 
 func (c *Cron) AddJob(job *CronJob) {
+	if !c.running {
+		for i, j := range c.h.array {
+			if j.Id == job.Id {
+				c.h.array[i] = job
+				return
+			}
+		}
+		c.h.array = append(c.h.array, job)
+		return
+	}
 	c.add <- job
 }
 
 func (c *Cron) RemoveJob(id string) {
+	if !c.running {
+		for i, j := range c.h.array {
+			if j.Id == id {
+				copy(c.h.array[i:], c.h.array[i+1:])
+				c.h.array = c.h.array[:len(c.h.array)-1]
+				return
+			}
+		}
+		return
+	}
 	c.rm <- id
 }

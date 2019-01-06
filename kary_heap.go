@@ -140,3 +140,10 @@ func (h *KaryHeap) remove(idx int) *CronJob {
 func (h *KaryHeap) Len() int {
 	return len(h.array)
 }
+
+func (h *KaryHeap) BuildHeap() {
+	ln := len(h.array)
+	for i := (ln - 1) / h.k; i >= 0; i-- {
+		h.down(i)
+	}
+}
