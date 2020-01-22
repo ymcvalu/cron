@@ -133,7 +133,13 @@ func (h *KaryHeap) remove(idx int) *CronJob {
 	ln := len(h.array)
 	h.array[idx] = h.array[ln-1]
 	h.array = h.array[:ln-1]
-	h.down(idx)
+
+	if h.cmp(h.array[idx], h.array[(idx-1)/h.k]) {
+		h.up(idx)
+	} else {
+		h.down(idx)
+	}
+
 	return ret
 }
 
