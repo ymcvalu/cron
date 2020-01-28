@@ -131,6 +131,10 @@ func (h *KaryHeap) Remove(idx int) *CronJob {
 func (h *KaryHeap) remove(idx int) *CronJob {
 	ret := h.array[idx]
 	ln := len(h.array)
+	if idx == ln-1 {
+		h.array = h.array[:ln-1]
+		return ret
+	}
 	h.array[idx] = h.array[ln-1]
 	h.array = h.array[:ln-1]
 
